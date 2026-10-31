@@ -1,0 +1,182 @@
+@page "/clientes"
+@using MiFrontend.Models
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<h1>Gestión de clientes</h1>
+
+<div class="panel">
+    <h3>@(editando ? "Editar cliente" : "Registrar cliente")</h3>
+
+    <EditForm Model="cliente"
+          OnValidSubmit="Guardar"
+          FormName="FormularioCliente">
+        <DataAnnotationsValidator />
+
+        <div class="form-grid">
+            <label>Nombre
+                <InputText @bind-Value="cliente.Nombre" />
+            </label>
+            <label>Fecha de registro
+                <InputDate @bind-Value="cliente.FechaRegistro" />
+            </label>
+            <label>Dirección
+                <InputText @bind-Value="cliente.Direccion" />
+            </label>
+            <label>Correo
+                <InputText @bind-Value="cliente.Correo" />
+            </label>
+            <label>Teléfono
+                <InputText @bind-Value="cliente.Telefono" />
+            </label>
+            <label>Estado
+                <InputCheckbox @bind-Value="cliente.EstadoCliente" />
+                Activo
+            </label>
+        </div>
+
+        <button type="submit">@(editando ? "Actualizar" : "Guardar")</button>
+        <button type="button" class="secondary" @onclick="Nuevo">Limpiar</button>
+    </EditForm>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(mensaje))
+{
+    <p>@mensaje</p>
+}
+
+<div class="panel">
+    <h3>Clientes registrados</h3>
+
+    <button @onclick="Cargar">Actualizar listado</button>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Correo</th>
+                <th>Teléfono</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var c in clientes)
+            {
+                <tr>
+                    <td>@c.Nombre</td>
+                    <td>@c.Correo</td>
+                    <td>@c.Telefono</td>
+                    <td>@(c.EstadoCliente ? "Activo" : "Inactivo")</td>
+                    <td>
+                        <button @onclick="() => Editar(c)">Editar</button>
+                        <button class="danger" @onclick="() => Eliminar(c.Id)">Eliminar</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<Cliente> clientes = [];
+    private Cliente cliente = new();
+    private bool editando;
+    private string mensaje = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Cargar();
+    }
+
+    private async Task Cargar()
+    {
+        try
+        {
+            clientes = await Http.GetFromJsonAsync<List<Cliente>>("api/clientes") ?? [];
+        }
+        catch
+        {
+            mensaje = "No se pudo conectar con la API.";
+        }
+    }
+
+    private async Task Guardar()
+    {
+        try
+        {
+            HttpResponseMessage respuesta;
+
+            if (editando)
+            {
+                respuesta = await Http.PutAsJsonAsync(
+                    $"api/clientes/{cliente.Id}", cliente);
+            }
+            else
+            {
+                respuesta = await Http.PostAsJsonAsync(
+                    "api/clientes", cliente);
+            }
+
+            if (respuesta.IsSuccessStatusCode)
+            {
+                mensaje = editando ? "Cliente actualizado." : "Cliente registrado.";
+                Nuevo();
+                await Cargar();
+            }
+            else
+            {
+                mensaje = $"Error al guardar: {(int)respuesta.StatusCode}";
+            }
+        }
+        catch
+        {
+            mensaje = "No se pudo conectar con la API.";
+        }
+    }
+
+    private void Editar(Cliente c)
+    {
+        cliente = new Cliente
+        {
+            Id = c.Id,
+            Nombre = c.Nombre,
+            FechaRegistro = c.FechaRegistro,
+            Direccion = c.Direccion,
+            Correo = c.Correo,
+            Telefono = c.Telefono,
+            EstadoCliente = c.EstadoCliente,
+            MotivoBloqueo = c.MotivoBloqueo,
+            FechaBloqueo = c.FechaBloqueo
+        };
+        editando = true;
+    }
+
+    private async Task Eliminar(Guid id)
+    {
+        try
+        {
+            var respuesta = await Http.DeleteAsync($"api/clientes/{id}");
+
+            if (respuesta.IsSuccessStatusCode)
+            {
+                mensaje = "Cliente eliminado.";
+                await Cargar();
+            }
+            else
+            {
+                mensaje = $"No se pudo eliminar: {(int)respuesta.StatusCode}. Puede tener registros relacionados.";
+            }
+        }
+        catch
+        {
+            mensaje = "No se pudo conectar con la API.";
+        }
+    }
+
+    private void Nuevo()
+    {
+        cliente = new Cliente();
+        editando = false;
+    }
+}

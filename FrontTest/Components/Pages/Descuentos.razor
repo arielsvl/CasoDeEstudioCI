@@ -1,0 +1,110 @@
+@page "/descuentos"
+@using MiFrontend.Models
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<h1>Consulta de descuentos</h1>
+
+<div class="panel">
+    <p>Consulta el descuento aplicable a un cliente que contrate cable e internet.</p>
+
+    <label>Seleccionar cliente</label>
+    <select @bind="idCliente">
+        <option value="@Guid.Empty">Seleccionar cliente</option>
+        @foreach (var c in clientes)
+        {
+            <option value="@c.Id">@c.Nombre — @c.Correo</option>
+        }
+    </select>
+
+    <button @onclick="Calcular">Calcular descuento</button>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(mensaje))
+{
+    <p>@mensaje</p>
+}
+
+@if (resultado is not null)
+{
+    <div class="panel resultado">
+        <h2>Resultado del cálculo</h2>
+
+        <div class="resumen">
+            <div>
+                <span>Subtotal mensual</span>
+                <strong>Q @resultado.Subtotal.ToString("N2")</strong>
+            </div>
+            <div>
+                <span>Descuento</span>
+                <strong>Q @resultado.Descuento.ToString("N2")</strong>
+            </div>
+            <div>
+                <span>Total mensual</span>
+                <strong>Q @resultado.TotalMensual.ToString("N2")</strong>
+            </div>
+        </div>
+
+        <p>
+            @if (resultado.Descuento > 0)
+            {
+                <span>El cliente cumple las condiciones para obtener el descuento.</span>
+            }
+            else
+            {
+                <span>No se aplicó descuento al paquete.</span>
+            }
+        </p>
+    </div>
+}
+
+@code {
+    private List<Cliente> clientes = [];
+    private Guid idCliente = Guid.Empty;
+    private DescuentoResultado? resultado;
+    private string mensaje = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            clientes = await Http.GetFromJsonAsync<List<Cliente>>("api/clientes") ?? [];
+        }
+        catch
+        {
+            mensaje = "No se pudieron cargar los clientes.";
+        }
+    }
+
+    private async Task Calcular()
+    {
+        resultado = null;
+        mensaje = "";
+
+        if (idCliente == Guid.Empty)
+        {
+            mensaje = "Selecciona un cliente.";
+            return;
+        }
+
+        try
+        {
+            var respuesta = await Http.GetAsync(
+                $"api/servicios/cliente/{idCliente}/descuento");
+
+            if (respuesta.IsSuccessStatusCode)
+            {
+                resultado = await respuesta.Content
+                    .ReadFromJsonAsync<DescuentoResultado>();
+            }
+            else
+            {
+                mensaje = $"No se pudo calcular el descuento. Código: {(int)respuesta.StatusCode}";
+            }
+        }
+        catch
+        {
+            mensaje = "No se pudo conectar con la API.";
+        }
+    }
+}

@@ -1,0 +1,202 @@
+@page "/servicios"
+@using MiFrontend.Models
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<h1>Gestión de servicios</h1>
+
+<div class="panel">
+    <h3>@(editando ? "Editar servicio" : "Contratar servicio")</h3>
+
+    <EditForm Model="servicio"
+          OnValidSubmit="Guardar"
+          FormName="FormularioServicio">
+        <div class="form-grid">
+            <label>Cliente
+                <select @bind="servicio.IdCliente">
+                    <option value="@Guid.Empty">Seleccionar cliente</option>
+                    @foreach (var c in clientes)
+                    {
+                        <option value="@c.Id">@c.Nombre</option>
+                    }
+                </select>
+            </label>
+
+            <label>Tipo de servicio
+                <select @bind="servicio.IdTipo">
+                    <option value="0">Seleccionar tipo</option>
+                    @foreach (var t in tipos)
+                    {
+                        <option value="@t.Id">@t.Nombre</option>
+                    }
+                </select>
+            </label>
+
+            <label>Costo mensual
+                <InputNumber @bind-Value="servicio.CostoMensual" />
+            </label>
+
+            <label>Dirección de instalación
+                <InputText @bind-Value="servicio.DireccionInstalacion" />
+            </label>
+        </div>
+
+        <button type="submit">@(editando ? "Actualizar" : "Guardar")</button>
+        <button type="button" class="secondary" @onclick="Nuevo">Limpiar</button>
+    </EditForm>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(mensaje))
+{
+    <p>@mensaje</p>
+}
+
+<div class="panel">
+    <h3>Servicios registrados</h3>
+
+    <table>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Cliente</th>
+                <th>Tipo</th>
+                <th>Costo mensual</th>
+                <th>Dirección</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var s in servicios)
+            {
+                <tr>
+                    <td>@s.Id</td>
+                    <td>@NombreCliente(s.IdCliente)</td>
+                    <td>@NombreTipo(s.IdTipo)</td>
+                    <td>Q @s.CostoMensual.ToString("N2")</td>
+                    <td>@s.DireccionInstalacion</td>
+                    <td>@(s.Estado ? "Activo" : "Inactivo")</td>
+                    <td>
+                        <button @onclick="() => Editar(s)">Editar</button>
+                        @if (s.Estado)
+                        {
+                            <button class="danger" @onclick="() => Desactivar(s.Id)">
+                                Desactivar
+                            </button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<Servicio> servicios = [];
+    private List<Cliente> clientes = [];
+    private List<TipoItem> tipos = [];
+    private Servicio servicio = new();
+    private bool editando;
+    private string mensaje = "";
+
+    private sealed class TipoItem
+    {
+        public int Id { get; set; }
+        public string Nombre { get; set; } = "";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            clientes = await Http.GetFromJsonAsync<List<Cliente>>("api/clientes") ?? [];
+            servicios = await Http.GetFromJsonAsync<List<Servicio>>("api/servicios") ?? [];
+
+            // Se utiliza el catálogo real de tipos de servicio.
+            tipos = await Http.GetFromJsonAsync<List<TipoItem>>("api/tiposervicios") ?? [];
+        }
+        catch
+        {
+            mensaje = "No se pudieron cargar los datos. Verifica la API.";
+        }
+    }
+
+    private string NombreCliente(Guid id) =>
+        clientes.FirstOrDefault(c => c.Id == id)?.Nombre ?? id.ToString();
+
+    private string NombreTipo(int id) =>
+        tipos.FirstOrDefault(t => t.Id == id)?.Nombre ?? id.ToString();
+
+    private async Task Guardar()
+    {
+        if (servicio.IdCliente == Guid.Empty || servicio.IdTipo <= 0)
+        {
+            mensaje = "Selecciona un cliente y un tipo de servicio.";
+            return;
+        }
+
+        try
+        {
+            var respuesta = editando
+                ? await Http.PutAsJsonAsync($"api/servicios/{servicio.Id}", servicio)
+                : await Http.PostAsJsonAsync("api/servicios", servicio);
+
+            if (respuesta.IsSuccessStatusCode)
+            {
+                mensaje = editando ? "Servicio actualizado." : "Servicio contratado.";
+                Nuevo();
+                servicios = await Http.GetFromJsonAsync<List<Servicio>>("api/servicios") ?? [];
+            }
+            else
+            {
+                mensaje = $"Error al guardar: {(int)respuesta.StatusCode}";
+            }
+        }
+        catch
+        {
+            mensaje = "No se pudo conectar con la API.";
+        }
+    }
+
+    private void Editar(Servicio s)
+    {
+        servicio = new Servicio
+        {
+            Id = s.Id,
+            IdCliente = s.IdCliente,
+            IdTipo = s.IdTipo,
+            CostoMensual = s.CostoMensual,
+            DireccionInstalacion = s.DireccionInstalacion,
+            Estado = s.Estado
+        };
+        editando = true;
+    }
+
+    private async Task Desactivar(long id)
+    {
+        try
+        {
+            var respuesta = await Http.DeleteAsync($"api/servicios/{id}");
+
+            if (respuesta.IsSuccessStatusCode)
+            {
+                mensaje = "Servicio desactivado.";
+                servicios = await Http.GetFromJsonAsync<List<Servicio>>("api/servicios") ?? [];
+            }
+            else
+            {
+                mensaje = $"No se pudo desactivar: {(int)respuesta.StatusCode}";
+            }
+        }
+        catch
+        {
+            mensaje = "No se pudo conectar con la API.";
+        }
+    }
+
+    private void Nuevo()
+    {
+        servicio = new Servicio();
+        editando = false;
+    }
+}
